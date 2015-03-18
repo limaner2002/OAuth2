@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Token
+module Network.OAuth2.Token
     where
 
 import qualified Data.ByteString.Char8 as C8
@@ -33,7 +33,7 @@ foreign import ccall "GetPasswordKeychain" c_GetPasswordKeychain :: Ptr a -> CUI
 foreign import ccall "&ffree" ffree :: FunPtr (CString -> IO())
 
 data Token = Token
-    { accessToken :: !String,
+    { authToken :: !String,
       expiresIn :: !Int,
       tokenType :: !String,
       refreshToken :: Maybe String,
@@ -42,10 +42,10 @@ data Token = Token
 
 type PageToken = String
 
-save :: Maybe Token -> IO ()
-save Nothing = putStrLn "Cannot save Nothing"
-save (Just tok) = do
-  saveRefreshToken "My Google Drive" "MyDrive" (refreshToken tok)
+save :: Maybe Token -> String -> String -> IO ()
+save Nothing _ _ = putStrLn "Cannot save Nothing"
+save (Just tok) service account = do
+  saveRefreshToken service account (refreshToken tok)
   BL.writeFile "token" encoded
     where
       encoded = Data.Aeson.encode tok

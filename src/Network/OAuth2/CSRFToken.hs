@@ -1,4 +1,4 @@
-module CSRFToken
+module Network.OAuth2.CSRFToken
     where
 
 -- import URI

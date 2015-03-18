@@ -1,4 +1,4 @@
-module URI
+module Network.OAuth2.URI
     where
 
 import Network.HTTP.Conduit

@@ -1,4 +1,4 @@
-module ConfigFile (
+module Network.OAuth2.ConfigFile (
                    Config,
                    readConfig,
                    param

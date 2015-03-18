@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module OAuth2 (
+module Network.OAuth2.OAuth2 (
                OAuth2WebServerFlow(localDirectory),
                createFlow,
 	       endFlow,
@@ -13,8 +13,8 @@ module OAuth2 (
               )
     where
 
-import URI
-import CSRFToken
+import Network.OAuth2.URI
+import Network.OAuth2.CSRFToken
 import Data.Aeson
 import Data.Maybe
 import Data.Monoid ((<>))
@@ -25,15 +25,15 @@ import Network.HTTP.Base (urlEncode)
 import Network.HTTP.Types (hAuthorization)
 import Network.HTTP.Types.Status (Status(..))
 import Network.HTTP.Conduit
-import Token
+import Network.OAuth2.Token
 import Text.Printf
 import System.IO (hFlush, stdout)
 import Network.HTTP.Conduit -- the main module
-import ConfigFile
+import Network.OAuth2.ConfigFile
 import Control.Exception
 import Control.Monad.Except
 import Control.Monad.State
-import Util
+import Network.OAuth2.Util
 
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as L8
@@ -52,7 +52,9 @@ data OAuth2WebServerFlow = OAuth2WebServerFlow
       deviceUri :: !String,
       accessToken :: Maybe Token,
       manager :: Manager,
-      localDirectory :: String
+      localDirectory :: String,
+      authService :: String,
+      authAccount :: String
     }
 
 type Flow = ExceptT String (StateT OAuth2WebServerFlow IO)
@@ -74,10 +76,13 @@ createFlow configFile authorizationFile = do
   let clientId = param "clientId" conf
   let clientSecret = param "clientSecret" conf
   let localDirectory = param "localDirectory" conf
+  let authService = param "authService" conf
+  let authAccount = param "authAccount" conf
 
   return $ OAuth2WebServerFlow (CSRFToken clientId "someState" "drive")
          clientSecret oauthScope redirectUri
          userAgent authUri tokenUri revokeUri loginHint deviceUri Nothing manager localDirectory
+	 authService authAccount
 
 endFlow :: OAuth2WebServerFlow -> IO ()
 endFlow = closeManager . manager
@@ -97,7 +102,7 @@ getTokens = do
        	       liftIO $ putStrLn "Requesting new tokens"
 	       requestTokens'
        Just token -> do
-       	    put $ webFlow {OAuth2.accessToken = token}
+       	    put $ webFlow {accessToken = token}
 	    checkToken'
 
 checkToken :: OAuth2WebServerFlow -> Maybe Token -> IO (Maybe Token)
@@ -111,7 +116,7 @@ checkToken flow (Just token) = do
   else do
     putStrLn "Token has expired. Requesting a new one"
     newToken <- refreshTokens flow (Just token)
-    save newToken
+    save newToken (authService flow) (authAccount flow)
     return newToken
 
 checkToken' :: Flow ()
@@ -125,13 +130,14 @@ checkToken' = do
 	   else do
 	   	liftIO $ putStrLn "Token has expired. Requesting a new one"
 		newToken <- liftIO $ refreshTokens webFlow (Just token)
-		liftIO $ save newToken
-		put $ webFlow { OAuth2.accessToken = newToken }
+		liftIO $ save newToken (authService webFlow) (authAccount webFlow)
+		put $ webFlow { accessToken = newToken }
 
 refreshTokens :: OAuth2WebServerFlow -> Maybe Token -> IO (Maybe Token)
 refreshTokens _ Nothing = return Nothing
 refreshTokens flow (Just oldToken) = do
-  refreshToken <- fromKeychain "My Google Drive" "MyDrive"
+  -- refreshToken <- fromKeychain "My Google Drive" "MyDrive"
+  refreshToken <- fromKeychain (authService flow) (authAccount flow)
   putStrLn "Refresh token is"
 
   let tok = token flow
@@ -170,7 +176,7 @@ requestTokens flow = do
                ]
 
   result <- fromUrl' flowManager (tokenUri flow) params
-  save $ fst result
+  save (fst result) (authService flow) (authAccount flow)
   return $ fst result
  where
    flowManager = getManager flow
@@ -196,8 +202,8 @@ requestTokens' = do
                ]
 
   (result, status) <- liftIO $ fromUrl' flowManager (tokenUri webFlow) params
-  liftIO $ save $ result
-  put $ webFlow { OAuth2.accessToken = result }  
+  liftIO $ save result (authService webFlow) (authAccount webFlow)
+  put $ webFlow { accessToken = result }  
 
 instance Show OAuth2WebServerFlow
     where
@@ -213,7 +219,7 @@ instance URI OAuth2WebServerFlow
 
 getAuthToken :: OAuth2WebServerFlow -> IO (Token)
 getAuthToken flow = do
-	       let tok = OAuth2.accessToken flow
+	       let tok = accessToken flow
 	       case tok of
 	       	    Nothing -> error "Invalid token for some reason."
 		    Just token -> return token

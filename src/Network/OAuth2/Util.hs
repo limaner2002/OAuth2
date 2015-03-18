@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Util (
+module Network.OAuth2.Util (
        fromFileL,
        fromFile,
        fromUrl,
@@ -29,7 +29,7 @@ import Network.HTTP.Types.Status (Status(..))
 import qualified Data.ByteString.Char8 as C8
 
 -- Maybe can remove this and make tokenUrl more general?
-import Token 
+import Network.OAuth2.Token 
 
 getL :: (FromJSON a) => BL.ByteString -> IO (Maybe a)
 getL "" = return Nothing
@@ -132,4 +132,4 @@ downloadFile manager (Just url) localPath token = do
 
   putStrLn "Downloading file now."
  where
-   authorize request token = request { requestHeaders = [(hAuthorization, C8.pack $ "Bearer " ++ accessToken token)] }
+   authorize request token = request { requestHeaders = [(hAuthorization, C8.pack $ "Bearer " ++ authToken token)] }
