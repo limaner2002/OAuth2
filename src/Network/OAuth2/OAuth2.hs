@@ -16,10 +16,8 @@ module Network.OAuth2.OAuth2 (
 import Network.OAuth2.URI
 import Network.OAuth2.CSRFToken
 import Data.Aeson
-import Data.Maybe
 import Data.Monoid ((<>))
 import Data.List (intercalate)
-import Data.Maybe (fromJust)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Network.HTTP.Base (urlEncode)
 import Network.HTTP.Types (hAuthorization)
@@ -30,6 +28,7 @@ import Text.Printf
 import System.IO (hFlush, stdout)
 import Network.HTTP.Conduit -- the main module
 import Network.OAuth2.ConfigFile
+import Network.OAuth2.Types
 import Control.Exception
 import Control.Monad.Except
 import Control.Monad.State
@@ -39,31 +38,10 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Data.ByteString.Char8 as C8
 
-data OAuth2WebServerFlow = OAuth2WebServerFlow
-    { token :: !CSRFToken,
-      clientSecret :: !String,
-      scope :: ![String],
-      redirectUri :: !String,
-      userAgent :: !String,
-      authUri :: !String,
-      tokenUri :: !String,
-      revokeUri :: !String,
-      loginHint :: !String,
-      deviceUri :: !String,
-      accessToken :: Maybe Token,
-      manager :: Manager,
-      localDirectory :: String,
-      authService :: String,
-      authAccount :: String
-    }
-
-type Flow = ExceptT String (StateT OAuth2WebServerFlow IO)
-
-createFlow :: String -> String -> IO (OAuth2WebServerFlow)
-createFlow configFile authorizationFile = do
+createFlow :: String -> IO (OAuth2WebServerFlow)
+createFlow configFile = do
   manager <- newManager conduitManagerSettings
   conf <- readConfig configFile
-  authorization <- readConfig authorizationFile
 
   let oauthScope = [param "scopes" conf]
   let redirectUri = param "redirectUri" conf
@@ -136,7 +114,6 @@ checkToken' = do
 refreshTokens :: OAuth2WebServerFlow -> Maybe Token -> IO (Maybe Token)
 refreshTokens _ Nothing = return Nothing
 refreshTokens flow (Just oldToken) = do
-  -- refreshToken <- fromKeychain "My Google Drive" "MyDrive"
   refreshToken <- fromKeychain (authService flow) (authAccount flow)
   putStrLn "Refresh token is"
 
@@ -144,12 +121,14 @@ refreshTokens flow (Just oldToken) = do
   let params = [("client_id", clientId tok),
                 ("client_secret", clientSecret flow),
                 ("grant_type", "refresh_token"),
-                ("refresh_token", fromJust $ refreshToken)
+                ("refresh_token", check refreshToken)
                ]
 
   fromUrl' flowManager (tokenUri flow) params >>= (\newToken -> return $ fst newToken)
     where
       flowManager = getManager flow
+      check Nothing = error "Cannot get a new token without a refresh token."
+      check (Just tok) = tok
 
 passRefreshToken :: Maybe Token -> Maybe String -> IO (Maybe Token)
 passRefreshToken Nothing _ = return Nothing
@@ -163,7 +142,7 @@ requestTokens flow = do
   let tok = token flow
 
   printf "\nVisit the following URL to retreive a verification code:\n\n"
-  printf "%s\n\n" $ getAuthorizeUrl flow
+  printf "%s\n\n" $ authUri flow
   printf "Verification code: "
   hFlush stdout
   authCode <- getLine
@@ -188,7 +167,7 @@ requestTokens' = do
   let flowManager = getManager webFlow
 
   liftIO $ printf "\nVisit the following URL to retreive a verification code:\n\n"
-  liftIO $ printf "%s\n\n" $ getAuthorizeUrl webFlow
+  liftIO $ printf "%s\n\n" $ render webFlow
   liftIO $ printf "Verification code: "
   liftIO $ hFlush stdout
 

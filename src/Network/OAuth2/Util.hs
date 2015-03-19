@@ -6,6 +6,7 @@ module Network.OAuth2.Util (
        fromAuthorizedUrl,
        fromRequest,
        fromUrl',
+       fromAuthUrl,
        checkDirectory,
        downloadFile
     )
@@ -15,10 +16,13 @@ import Data.Aeson
 import Data.String
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as B8
 import System.IO
 import System.Directory
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception
+import qualified Control.Monad.State as ST
+import Control.Monad.Except
 import Control.Arrow (second)
 import Network.HTTP.Conduit
 import Data.Conduit
@@ -30,6 +34,7 @@ import qualified Data.ByteString.Char8 as C8
 
 -- Maybe can remove this and make tokenUrl more general?
 import Network.OAuth2.Token 
+import Network.OAuth2.Types
 
 getL :: (FromJSON a) => BL.ByteString -> IO (Maybe a)
 getL "" = return Nothing
@@ -63,10 +68,36 @@ fromFile fName = BS.readFile fName `catch` exceptHandler >>= get
 
 -- Reads and decodes a JSON object from a web url.
 fromUrl :: (FromJSON a) => Manager -> String -> [(C8.ByteString, String)] -> IO (Maybe a, Status)
+fromUrl manager url [] = do
+  request <- parseUrl url
+
+  fromRequest manager $ request
 fromUrl manager url params = do
   request <- parseUrl url
 
   fromRequest manager $ urlEncodedBody (map (second C8.pack) params) request
+
+fromAuthUrl :: (FromJSON a) => String -> Flow a
+fromAuthUrl url = do
+  webFlow <- ST.get
+  let flowManager = manager webFlow
+  let token = accessToken webFlow
+  case token of
+       Nothing -> throwError "There is no valid token for some reason!"
+       Just tok -> do
+
+       	    request <- parseUrl url
+  
+	    (result, status) <- liftIO $ fromRequest flowManager $ authorize (authToken tok) request
+  	    case result of
+       	    	 Nothing -> throwError "There was an error getting the item(s)!"
+       		 Just r -> return r
+
+ where
+  authorize token request =request
+       		      { requestHeaders = headers token
+		      }
+  headers token = [(hAuthorization, B8.pack $ "Bearer " ++ token)]
 
 fromAuthorizedUrl :: (FromJSON a) => Manager -> String -> [(HeaderName, C8.ByteString)] -> IO (Maybe a, Status)
 fromAuthorizedUrl manager url headers = do
@@ -105,7 +136,9 @@ fromUrl' manager url params = do
   return (tok, status)
 
 getResponse :: Manager -> Request -> IO (BL.ByteString, Status)
-getResponse manager request =
+getResponse manager request = do
+  putStrLn "Request: "
+  putStrLn $ show request
   (fmap (\x -> (responseBody x, responseStatus x)) $ httpLbs request manager)
   `catch` urlExceptionHandler
 

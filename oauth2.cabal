@@ -51,7 +51,7 @@ cabal-version:       >=1.10
 
 library
   -- Modules exported by the library.
-  exposed-modules:     Network.OAuth2.CSRFToken, Network.OAuth2.ConfigFile, Network.OAuth2.OAuth2, Network.OAuth2.Token, Network.OAuth2.URI, Network.OAuth2.Util
+  exposed-modules:     Network.OAuth2.CSRFToken, Network.OAuth2.ConfigFile, Network.OAuth2.OAuth2, Network.OAuth2.Token, Network.OAuth2.URI, Network.OAuth2.Util, Network.OAuth2.Types
   
   -- Modules included in this library but not exported.
   -- other-modules:       
@@ -69,3 +69,4 @@ library
   default-language:    Haskell2010
   
   c-sources:	       external/keychain.c
+  ld-options:	       -framework Security
