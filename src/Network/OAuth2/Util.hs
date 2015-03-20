@@ -8,7 +8,8 @@ module Network.OAuth2.Util (
        fromUrl',
        fromAuthUrl,
        checkDirectory,
-       downloadFile
+       downloadFile,
+       authRequest
     )
     where
 
@@ -144,6 +145,21 @@ getResponse manager request = do
 
 tokenUrl :: BL.ByteString -> IO (Maybe Token)
 tokenUrl body = decodeToken (Data.Aeson.decode body)
+
+authRequest :: String -> Flow (Status)
+authRequest url = do
+  webFlow <- ST.get
+  let flowManager = manager webFlow
+  let tok = accessToken webFlow
+  case tok of
+       Nothing -> do throwError "Cannot perform an authorized request without a valid access token!"
+       Just token -> do
+       	    	     let authHeaders = [(hAuthorization, C8.pack $ "Bearer " ++ authToken token)]
+  		     request <- parseUrl url
+
+  		     response <- httpLbs (request { requestHeaders = authHeaders, method = "POST" }) flowManager
+
+  		     return $ responseStatus response
 
 -- Checks to see if the directory specified in path exists and creates
 -- it if it does not already exist.
